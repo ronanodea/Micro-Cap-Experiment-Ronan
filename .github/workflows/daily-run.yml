@@ -25,13 +25,34 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
+          
       - name: Run trading script
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python trading_script.py
 
+      - name: Build GitHub Pages (docs/)
+        run: |
+          python tools/build_pages.py || echo "No pages built yet"
+
+      - name: Diagnose file changes
+        run: |
+          echo "---- git status BEFORE heartbeat ----"
+          git status
+          echo "---- recently modified files ----"
+          ls -lt | head -n 20 || true
+          echo "---- diff summary ----"
+          git diff --name-only || true
+
+      - name: Heartbeat (guarantee a change to commit)
+        run: |
+          mkdir -p docs
+          date -u +"%Y-%m-%d %H:%M:%S UTC" > docs/last-run.txt
+          echo "Updated docs/last-run.txt"
+
       - name: Commit & push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -39,6 +60,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "Daily trading update [skip ci]"
+            git commit -m "ci: workflow run (heartbeat + outputs) [skip ci]"
             git push
           fi
