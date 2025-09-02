@@ -29,17 +29,22 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run trading script
+      - name: Run trading script (capture logs)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          if [ -f trading_script.py ]; then
-            python trading_script.py
-          else
-            echo "trading_script.py not found, skipping."
-          fi
+          set -e
+          python trading_script.py
+        continue-on-error: false
 
-      # Optional: build the Pages dashboard if you added tools/build_pages.py
+      # Collect any CSVs created anywhere in the repo during this run
+      - name: Gather CSV outputs into Scripts and CSV Files/
+        run: |
+          mkdir -p "Scripts and CSV Files"
+          # copy CSVs modified in the last 24h into the expected folder
+          find . -type f -name "*.csv" -not -path "./.git/*" -mtime -1 -print -exec cp -f {} "Scripts and CSV Files/" \;
+
+      # Optional: (re)build the Pages dashboard if you added it
       - name: Build GitHub Pages (docs/)
         continue-on-error: true
         run: |
@@ -49,25 +54,12 @@ jobs:
             echo "No page builder found (tools/build_pages.py)."
           fi
 
-      # Always run these next steps, even if script/page build failed
-      - name: Diagnose file changes
-        if: always()
-        run: |
-          echo "---- git status BEFORE heartbeat ----"
-          git status
-          echo "---- changed files (working tree) ----"
-          git diff --name-only || true
-
-      # Heartbeat guarantees a change so we can verify commits
-      - name: Heartbeat (guarantee a change to commit)
-        if: always()
+      - name: Heartbeat (guarantee a change)
         run: |
           mkdir -p docs
           date -u +"%Y-%m-%d %H:%M:%S UTC" > docs/last-run.txt
-          echo "Updated docs/last-run.txt"
 
       - name: Commit & push changes
-        if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -77,6 +69,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "ci: workflow run (heartbeat + outputs) [skip ci]"
+            git commit -m "ci: daily trading outputs + dashboard [skip ci]"
             git push
           fi
